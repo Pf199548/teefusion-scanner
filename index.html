@@ -12,6 +12,33 @@ const qs=new URLSearchParams(location.search);
 const bridge=qs.get('bridge'), pair=qs.get('pair');
 const statusEl=document.getElementById('status'), connection=document.getElementById('connection'), resultEl=document.getElementById('result');
 let scanner=null,lastCode='',lastAt=0,busy=false;
+let audioContext=null;
+function unlockSound(){
+ try {
+  const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+  if(!AudioContextClass)return;
+  audioContext=audioContext||new AudioContextClass();
+  if(audioContext.state==='suspended')audioContext.resume().catch(()=>{});
+ } catch(e){}
+}
+function scanFeedback(){
+ // Short audible confirmation. iOS audio must be unlocked by a user tap.
+ try {
+  if(audioContext && audioContext.state==='running'){
+   const t=audioContext.currentTime;
+   const oscillator=audioContext.createOscillator();
+   const gain=audioContext.createGain();
+   oscillator.type='sine';oscillator.frequency.setValueAtTime(1150,t);
+   gain.gain.setValueAtTime(0.0001,t);
+   gain.gain.exponentialRampToValueAtTime(0.20,t+0.012);
+   gain.gain.exponentialRampToValueAtTime(0.0001,t+0.14);
+   oscillator.connect(gain);gain.connect(audioContext.destination);
+   oscillator.start(t);oscillator.stop(t+0.15);
+  }
+ }catch(e){}
+ // Supported on some Android devices; iPhone browsers usually ignore this.
+ try{if(navigator.vibrate)navigator.vibrate(100);}catch(e){}
+}
 function status(text,kind=''){statusEl.textContent=text;statusEl.className='status '+kind;}
 const validBridge=(()=>{try {const u=new URL(bridge);return u.protocol==='https:' && u.hostname==='script.google.com' && /^\/macros\/s\/[^/]+\/exec$/.test(u.pathname);}catch(e){return false;}})();
 const paired=validBridge && /^[a-f0-9]{64}$/i.test(pair||'');
@@ -30,18 +57,19 @@ async function sendCode(raw){
   // no-cors only means the request was sent; PC confirmation is authoritative.
   await fetch(bridge,{method:'POST',mode:'no-cors',body:data,redirect:'follow',cache:'no-store'});
   status('Sent: '+code+' — waiting for confirmation on PC.','good');
-  if(navigator.vibrate)navigator.vibrate(80);
+  // Delivery must be confirmed by the PC; feedback already occurred on detection.
  }catch(err){status('Network error. Check internet and scan again.','error');}
  finally{busy=false;}
 }
 async function start(){
+ unlockSound();
  if(scanner)return;
  if(typeof Html5Qrcode==='undefined')return status('Scanner library could not load. Check internet.','error');
  try {
   scanner=new Html5Qrcode('reader');
   await scanner.start({facingMode:'environment'},{fps:12,qrbox:{width:220,height:110},aspectRatio:1.9},decoded=>{
     const now=Date.now();if(decoded===lastCode && now-lastAt<5000)return;
-    lastCode=decoded;lastAt=now;sendCode(decoded);
+    lastCode=decoded;lastAt=now;scanFeedback();sendCode(decoded);
   },()=>{});
   status(paired?'Camera ready. Point at a product barcode.':'Camera ready in test mode. Scan a barcode to verify camera; PC sending is disabled until pairing.','good');
  }catch(err){scanner=null;status('Camera error: '+(err.message||err)+'. Open in Safari, allow camera, and try again.','error');}
@@ -49,5 +77,5 @@ async function start(){
 async function stop(){if(scanner){try{await scanner.stop();await scanner.clear();}catch(e){}scanner=null;status('Camera stopped.');}}
 document.getElementById('start').onclick=start;
 document.getElementById('stop').onclick=stop;
-document.getElementById('send').onclick=()=>{sendCode(document.getElementById('manual').value);document.getElementById('manual').value='';};
+document.getElementById('send').onclick=()=>{unlockSound();scanFeedback();sendCode(document.getElementById('manual').value);document.getElementById('manual').value='';};
 </script></body></html>
