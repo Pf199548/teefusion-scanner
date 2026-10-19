@@ -1,108 +1,437 @@
 
-<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>TeeFusion Scanner</title>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<title>TeeFusion Power Scanner</title>
+
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-<style>body{margin:0;background:#0c1524;color:#f8fafc;font:16px system-ui,-apple-system,sans-serif}.wrap{max-width:520px;margin:auto;padding:22px}header{display:flex;justify-content:space-between;align-items:center}h1{font-size:25px;margin:0}small{color:#b7c5d7}.pill{padding:7px 11px;background:#334155;border-radius:20px;font-size:12px}.camera{background:#17243a;border:1px solid #334155;border-radius:16px;margin:12px 0;min-height:0;height:260px;overflow:hidden}button{width:100%;padding:16px;border:0;border-radius:12px;background:#f5c432;color:#162033;font-size:17px;font-weight:700;margin:7px 0}button.secondary{background:#334155;color:#fff}input{width:100%;box-sizing:border-box;background:#1d2a40;border:1px solid #64748b;color:white;border-radius:10px;padding:14px;font-size:16px}.status{background:#1b2a40;padding:14px;border-radius:10px;line-height:1.5;word-break:break-word}.error{color:#fecaca}.good{color:#86efac}#reader{height:260px;overflow:hidden}#reader video{width:100%!important;height:260px!important;object-fit:contain!important;background:#000}#reader__scan_region{min-height:0!important} #reader__scan_region img{display:none!important}#reader__dashboard{display:none!important}.result{font-size:clamp(28px,8vw,48px);font-weight:800;text-align:center;letter-spacing:1px;word-break:break-all;padding:16px 8px;background:#182a42;border:1px solid #475569;border-radius:12px;margin:12px 0}.wrap{padding:14px}button{padding:12px}.status{font-size:12px;padding:8px}label{display:block;margin:16px 0 7px}</style></head>
-<body><div class="wrap"><header><div><h1>👕 TeeFusion</h1><small>Barcode + QR Wireless Scanner</small></div><span class="pill" id="connection">Not paired</span></header>
-<div class="camera" id="reader"></div><div class="result" id="result" aria-live="polite">READY TO SCAN</div><button id="start">📷 Start Camera</button><button class="secondary" id="stop">Stop Camera</button>
-<label for="manual">Manual barcode / QR text (backup)</label><input id="manual" autocomplete="off" placeholder="Enter barcode or QR value" inputmode="text"><button class="secondary" id="send">Send Code</button>
-<p class="status" id="status">Open this page using the QR pairing code displayed in TeeFusion on your PC.</p><small>Use Safari or Chrome directly. Pairing expires after 10 minutes. Never share a pairing link.</small></div>
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: #0b1423;
+  color: #f8fafc;
+  font-family: Arial, sans-serif;
+}
+
+.container {
+  max-width: 440px;
+  margin: auto;
+  padding: 18px;
+  text-align: center;
+}
+
+h1 { color: #f5c432; margin-bottom: 5px; }
+
+.subtitle { color: #aebbd0; font-size: 13px; }
+
+#connection {
+  display: inline-block;
+  margin: 12px;
+  padding: 7px 14px;
+  background: #334155;
+  border-radius: 20px;
+  font-size: 12px;
+}
+
+.camera-box {
+  width: 1.5in;
+  height: 1.5in;
+  max-width: 100%;
+  margin: 18px auto;
+  border: 3px solid #f5c432;
+  border-radius: 12px;
+  overflow: hidden;
+  background: black;
+}
+
+#reader {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+#reader video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+}
+
+#reader__dashboard,
+#reader__scan_region img {
+  display: none !important;
+}
+
+.result {
+  padding: 18px 10px;
+  margin: 15px 0;
+  min-height: 85px;
+  background: #17273d;
+  border-radius: 12px;
+  font-size: 28px;
+  font-weight: bold;
+  overflow-wrap: anywhere;
+}
+
+button {
+  padding: 14px;
+  border: none;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.start {
+  background: #f5c432;
+  color: #0b1423;
+}
+
+.stop, .send {
+  background: #334155;
+  color: white;
+}
+
+.buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.options { margin: 15px 0; font-size: 13px; }
+
+.options label { margin: 0 8px; }
+
+input[type="text"] {
+  width: 100%;
+  padding: 13px;
+  background: #18263a;
+  border: 1px solid #60718a;
+  border-radius: 9px;
+  color: white;
+  font-size: 16px;
+}
+
+.send { width: 100%; margin-top: 10px; }
+
+#status {
+  margin-top: 15px;
+  padding: 12px;
+  background: #17273d;
+  border-radius: 10px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.note {
+  margin-top: 15px;
+  font-size: 12px;
+  color: #aebbd0;
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+  <h1>TeeFusion</h1>
+  <div class="subtitle">Power Barcode + QR Scanner</div>
+
+  <div id="connection">Checking connection...</div>
+
+  <div class="camera-box">
+    <div id="reader"></div>
+  </div>
+
+  <div class="subtitle">1.5 × 1.5 inch camera preview</div>
+
+  <div class="result" id="result">READY TO SCAN</div>
+
+  <div class="buttons">
+    <button class="start" id="startBtn" onclick="startScanner()">
+      Start Camera
+    </button>
+    <button class="stop" onclick="stopScanner()">
+      Stop
+    </button>
+  </div>
+
+  <div class="options">
+    <label><input type="checkbox" id="sound" checked> Beep</label>
+    <label><input type="checkbox" id="vibrate" checked> Vibrate</label>
+  </div>
+
+  <p class="subtitle">Manual barcode / QR input</p>
+
+  <input type="text" id="manual" placeholder="Enter code manually">
+
+  <button class="send" onclick="manualSend()">Send Code</button>
+
+  <div id="status">Tap Start Camera.</div>
+
+  <div class="note">
+    Scan the pairing QR from your GAS dashboard to connect this scanner to your PC.
+  </div>
+
+</div>
+
 <script>
-'use strict';
-const qs=new URLSearchParams(location.search);
-const bridge=qs.get('bridge'), pair=qs.get('pair');
-const statusEl=document.getElementById('status'), connection=document.getElementById('connection'), resultEl=document.getElementById('result');
-let scanner=null,lastCode='',lastAt=0,busy=false;
-let audioContext=null;
-function unlockSound(){
- try {
-  const AudioContextClass=window.AudioContext||window.webkitAudioContext;
-  if(!AudioContextClass)return;
-  audioContext=audioContext||new AudioContextClass();
-  if(audioContext.state==='suspended')audioContext.resume().catch(()=>{});
- } catch(e){}
-}
-function scanFeedback(){
- // Short audible confirmation. iOS audio must be unlocked by a user tap.
- try {
-  if(audioContext && audioContext.state==='running'){
-   const t=audioContext.currentTime;
-   const oscillator=audioContext.createOscillator();
-   const gain=audioContext.createGain();
-   oscillator.type='sine';oscillator.frequency.setValueAtTime(1150,t);
-   gain.gain.setValueAtTime(0.0001,t);
-   gain.gain.exponentialRampToValueAtTime(0.20,t+0.012);
-   gain.gain.exponentialRampToValueAtTime(0.0001,t+0.14);
-   oscillator.connect(gain);gain.connect(audioContext.destination);
-   oscillator.start(t);oscillator.stop(t+0.15);
+"use strict";
+
+const params = new URLSearchParams(window.location.search);
+const bridge = params.get("bridge");
+const pair = params.get("pair");
+
+const result = document.getElementById("result");
+const statusBox = document.getElementById("status");
+const connection = document.getElementById("connection");
+
+let scanner = null;
+let starting = false;
+let lastCode = "";
+let lastTime = 0;
+let audioContext = null;
+let sending = false;
+
+function validBridge(url) {
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" &&
+      u.hostname === "script.google.com" &&
+      /^\/macros\/s\/[^/]+\/exec$/.test(u.pathname);
+  } catch (e) {
+    return false;
   }
- }catch(e){}
- // Supported on some Android devices; iPhone browsers usually ignore this.
- try{if(navigator.vibrate)navigator.vibrate(100);}catch(e){}
 }
-function status(text,kind=''){statusEl.textContent=text;statusEl.className='status '+kind;}
-const validBridge=(()=>{try {const u=new URL(bridge);return u.protocol==='https:' && u.hostname==='script.google.com' && /^\/macros\/s\/[^/]+\/exec$/.test(u.pathname);}catch(e){return false;}})();
-const paired=validBridge && /^[a-f0-9]{64}$/i.test(pair||'');
-if(paired){connection.textContent='Paired';connection.style.background='#14532d';status('Paired with TeeFusion. Tap Start Camera.','good');history.replaceState({},'',location.pathname);}else{connection.textContent='Camera test mode';status('Not paired yet. You can test the camera and scan barcodes; sending to PC requires GAS pairing.');}
-async function sendCode(raw){
- const code=String(raw||'').trim();
- if(!code)return;
- resultEl.textContent=code;
- if(!paired){status('Scanned: '+code+' (camera working). Connect GAS and pair with your PC to send this barcode.','good');return;}
- if(!code || code.length>100){status('Code must contain 1–100 characters for this GAS test backend.','error');return;}
- if(busy){status('Previous code is still being sent. Please wait.');return;}
- busy=true;
- const eventId=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+'-'+Math.random().toString(16).slice(2));
- const data=new URLSearchParams({action:'scanner_push',pair,barcode:code,eventId});
- try {
-  // Apps Script cross-origin POST responses are not reliably readable from a browser.
-  // no-cors only means the request was sent; PC confirmation is authoritative.
-  await fetch(bridge,{method:'POST',mode:'no-cors',body:data,redirect:'follow',cache:'no-store'});
-  status('Submitted: '+code+' — check PC for receipt (delivery not yet confirmed).','good');
-  // Delivery must be confirmed by the PC; feedback already occurred on detection.
- }catch(err){status('Network error. Check internet and scan again.','error');}
- finally{busy=false;}
+
+const paired = validBridge(bridge) &&
+  /^[a-f0-9]{64}$/i.test(pair || "");
+
+connection.textContent = paired ? "Paired with PC" : "Test Mode";
+
+if (paired) {
+  connection.style.background = "#14532d";
+  history.replaceState(null, "", location.pathname);
 }
-async function start(){
- unlockSound();
- if(scanner)return;
- if(typeof Html5Qrcode==='undefined')return status('Scanner library could not load. Check internet.','error');
- try {
-  scanner=new Html5Qrcode('reader', {
-    verbose:false,
-    useBarCodeDetectorIfSupported:true,
-    formatsToSupport:[
+
+function setStatus(message) {
+  statusBox.textContent = message;
+}
+
+function enableSound() {
+  try {
+    const Audio = window.AudioContext || window.webkitAudioContext;
+    if (!Audio) return;
+
+    audioContext = audioContext || new Audio();
+
+    if (audioContext.state === "suspended") {
+      audioContext.resume().catch(() => {});
+    }
+  } catch (e) {}
+}
+
+function feedback() {
+  if (document.getElementById("sound").checked) {
+    try {
+      if (audioContext && audioContext.state === "running") {
+        const oscillator = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        const t = audioContext.currentTime;
+
+        oscillator.type = "sine";
+        oscillator.frequency.value = 1100;
+
+        gain.gain.setValueAtTime(0.001, t);
+        gain.gain.exponentialRampToValueAtTime(0.18, t + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.13);
+
+        oscillator.connect(gain);
+        gain.connect(audioContext.destination);
+
+        oscillator.start(t);
+        oscillator.stop(t + 0.14);
+      }
+    } catch (e) {}
+  }
+
+  if (document.getElementById("vibrate").checked) {
+    try {
+      if (navigator.vibrate) navigator.vibrate(100);
+    } catch (e) {}
+  }
+}
+
+async function sendBarcode(raw) {
+  const code = String(raw || "").trim();
+  if (!code) return;
+
+  result.textContent = code;
+
+  if (!paired) {
+    setStatus("Scanned successfully (Test Mode): " + code);
+    return;
+  }
+
+  if (code.length > 100) {
+    setStatus("Code exceeds the 100-character GAS test limit.");
+    return;
+  }
+
+  if (sending) {
+    setStatus("Previous scan is still being submitted.");
+    return;
+  }
+
+  sending = true;
+
+  const eventId = window.crypto && crypto.randomUUID
+    ? crypto.randomUUID()
+    : Date.now() + "-" + Math.random().toString(16).slice(2);
+
+  try {
+    await fetch(bridge, {
+      method: "POST",
+      mode: "no-cors",
+      body: new URLSearchParams({
+        action: "scanner_push",
+        pair: pair,
+        barcode: code,
+        eventId: eventId
+      }),
+      redirect: "follow",
+      cache: "no-store"
+    });
+
+    setStatus(
+      "Scan submitted to GAS. Check the PC for confirmation."
+    );
+  } catch (error) {
+    setStatus("Network submission failed. Please retry.");
+  } finally {
+    sending = false;
+  }
+}
+
+function onScanSuccess(decodedText) {
+  const code = String(decodedText || "").trim();
+  if (!code) return;
+
+  const now = Date.now();
+
+  if (code === lastCode && now - lastTime < 2800) {
+    return;
+  }
+
+  lastCode = code;
+  lastTime = now;
+
+  feedback();
+  sendBarcode(code);
+}
+
+async function startScanner() {
+  if (scanner || starting) return;
+
+  starting = true;
+  document.getElementById("startBtn").disabled = true;
+
+  enableSound();
+
+  if (typeof Html5Qrcode === "undefined") {
+    setStatus("Scanner library could not load. Check internet connection.");
+    starting = false;
+    document.getElementById("startBtn").disabled = false;
+    return;
+  }
+
+  try {
+    const formats = [
       Html5QrcodeSupportedFormats.QR_CODE,
-      Html5QrcodeSupportedFormats.CODE_128,
-      Html5QrcodeSupportedFormats.CODE_39,
-      Html5QrcodeSupportedFormats.CODE_93,
       Html5QrcodeSupportedFormats.EAN_13,
       Html5QrcodeSupportedFormats.EAN_8,
       Html5QrcodeSupportedFormats.UPC_A,
       Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.CODE_93,
       Html5QrcodeSupportedFormats.ITF,
       Html5QrcodeSupportedFormats.CODABAR,
       Html5QrcodeSupportedFormats.DATA_MATRIX,
       Html5QrcodeSupportedFormats.PDF_417
-    ]
-  });
-  await scanner.start({facingMode:'environment'}, {
-    fps:20,
-    qrbox:(viewWidth,viewHeight)=>{
-      // Large centered square allows QR codes and linear barcodes.
-      const size=Math.max(120,Math.floor(Math.min(viewWidth,viewHeight)*0.85));
-      return {width:size,height:size};
-    },
-    disableFlip:true,
-    videoConstraints:{facingMode:'environment',width:{ideal:1280},height:{ideal:720}}
-  },decoded=>{
-    const now=Date.now();if(decoded===lastCode && now-lastAt<5000)return;
-    lastCode=decoded;lastAt=now;scanFeedback();sendCode(decoded);
-  },()=>{});
-  status(paired?'Camera ready. Scan a barcode or QR code.':'Camera ready in test mode. Scan a barcode or QR code; PC sending requires pairing.','good');
- }catch(err){scanner=null;status('Camera error: '+(err.message||err)+'. Open in Safari, allow camera, and try again.','error');}
+    ];
+
+    scanner = new Html5Qrcode("reader", {
+      formatsToSupport: formats,
+      verbose: false,
+      useBarCodeDetectorIfSupported: true
+    });
+
+    // Decode the full camera frame.
+    // Do not crop the scan region to the 1.5-inch preview.
+    await scanner.start(
+      { facingMode: "environment" },
+      {
+        fps: 12,
+        disableFlip: true
+      },
+      onScanSuccess,
+      () => {}
+    );
+
+    setStatus("Camera running. Aim at a barcode or QR code.");
+
+  } catch (error) {
+    setStatus("Camera error: " + (error.message || error));
+
+    try {
+      if (scanner) await scanner.clear();
+    } catch (e) {}
+
+    scanner = null;
+  } finally {
+    starting = false;
+    document.getElementById("startBtn").disabled = false;
+  }
 }
-async function stop(){if(scanner){try{await scanner.stop();await scanner.clear();}catch(e){}scanner=null;status('Camera stopped.');}}
-document.getElementById('start').onclick=start;
-document.getElementById('stop').onclick=stop;
-document.getElementById('send').onclick=()=>{unlockSound();scanFeedback();sendCode(document.getElementById('manual').value);document.getElementById('manual').value='';};
-</script></body></html>
+
+async function stopScanner() {
+  if (!scanner) return;
+
+  try {
+    await scanner.stop();
+    await scanner.clear();
+    setStatus("Camera stopped.");
+  } catch (error) {
+    setStatus("Camera stop error: " + error);
+  } finally {
+    scanner = null;
+  }
+}
+
+function manualSend() {
+  enableSound();
+
+  const input = document.getElementById("manual");
+  const code = input.value.trim();
+
+  if (!code) return;
+
+  feedback();
+  sendBarcode(code);
+  input.value = "";
+}
+
+setStatus(
+  paired
+    ? "Paired. Tap Start Camera and scan."
+    : "Test Mode: scanned codes will display here."
+);
+</script>
+</body>
+</html>
