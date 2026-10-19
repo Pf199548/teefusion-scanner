@@ -1,0 +1,52 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>TeeFusion Scanner</title>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>body{margin:0;background:#0c1524;color:#f8fafc;font:16px system-ui,-apple-system,sans-serif}.wrap{max-width:520px;margin:auto;padding:22px}header{display:flex;justify-content:space-between;align-items:center}h1{font-size:25px;margin:0}small{color:#b7c5d7}.pill{padding:7px 11px;background:#334155;border-radius:20px;font-size:12px}.camera{background:#17243a;border:1px solid #334155;border-radius:16px;margin:22px 0;min-height:200px;overflow:hidden}button{width:100%;padding:16px;border:0;border-radius:12px;background:#f5c432;color:#162033;font-size:17px;font-weight:700;margin:7px 0}button.secondary{background:#334155;color:#fff}input{width:100%;box-sizing:border-box;background:#1d2a40;border:1px solid #64748b;color:white;border-radius:10px;padding:14px;font-size:16px}.status{background:#1b2a40;padding:14px;border-radius:10px;line-height:1.5;word-break:break-word}.error{color:#fecaca}.good{color:#86efac}#reader video{width:100%!important}label{display:block;margin:16px 0 7px}</style></head>
+<body><div class="wrap"><header><div><h1>👕 TeeFusion</h1><small>Wireless Mobile Barcode Scanner</small></div><span class="pill" id="connection">Not paired</span></header>
+<div class="camera" id="reader"></div><button id="start">📷 Start Camera</button><button class="secondary" id="stop">Stop Camera</button>
+<label for="manual">Manual barcode (backup)</label><input id="manual" autocomplete="off" placeholder="Enter barcode" inputmode="text"><button class="secondary" id="send">Send Barcode</button>
+<p class="status" id="status">Open this page using the QR pairing code displayed in TeeFusion on your PC.</p><small>Use Safari or Chrome directly. Pairing expires after 10 minutes. Never share a pairing link.</small></div>
+<script>
+'use strict';
+const qs=new URLSearchParams(location.search);
+const bridge=qs.get('bridge'), pair=qs.get('pair');
+const statusEl=document.getElementById('status'), connection=document.getElementById('connection');
+let scanner=null,lastCode='',lastAt=0,busy=false;
+function status(text,kind=''){statusEl.textContent=text;statusEl.className='status '+kind;}
+const validBridge=(()=>{try {const u=new URL(bridge);return u.protocol==='https:' && u.hostname==='script.google.com' && /^\/macros\/s\/[^/]+\/exec$/.test(u.pathname);}catch(e){return false;}})();
+const paired=validBridge && /^[a-f0-9]{64}$/i.test(pair||'');
+if(paired){connection.textContent='Paired';connection.style.background='#14532d';status('Paired with TeeFusion. Tap Start Camera.','good');history.replaceState({},'',location.pathname);}else{status('Invalid or missing pairing link. Scan a fresh QR code from your PC.','error');}
+async function sendCode(raw){
+ const code=String(raw||'').trim();
+ if(!paired){status('Pairing required','error');return;}
+ if(!/^[A-Za-z0-9._+\/-]{1,100}$/.test(code)){status('Unsupported barcode characters','error');return;}
+ if(busy)return;
+ busy=true;
+ const eventId=crypto.randomUUID();
+ const data=new URLSearchParams({action:'scanner_push',pair,barcode:code,eventId});
+ try {
+  // Apps Script cross-origin POST responses are not reliably readable from a browser.
+  // no-cors only means the request was sent; PC confirmation is authoritative.
+  await fetch(bridge,{method:'POST',mode:'no-cors',body:data,redirect:'follow',cache:'no-store'});
+  status('Sent: '+code+' — waiting for confirmation on PC.','good');
+  if(navigator.vibrate)navigator.vibrate(80);
+ }catch(err){status('Network error. Check internet and scan again.','error');}
+ finally{busy=false;}
+}
+async function start(){
+ if(!paired)return status('Scan PC pairing QR first','error');
+ if(scanner)return;
+ if(typeof Html5Qrcode==='undefined')return status('Scanner library could not load. Check internet.','error');
+ try {
+  scanner=new Html5Qrcode('reader');
+  await scanner.start({facingMode:'environment'},{fps:10,qrbox:{width:240,height:150}},decoded=>{
+    const now=Date.now();if(decoded===lastCode && now-lastAt<2500)return;
+    lastCode=decoded;lastAt=now;sendCode(decoded);
+  },()=>{});
+  status('Camera ready. Point at a product barcode.','good');
+ }catch(err){scanner=null;status('Camera error: '+(err.message||err)+'. Open in Safari, allow camera, and try again.','error');}
+}
+async function stop(){if(scanner){try{await scanner.stop();await scanner.clear();}catch(e){}scanner=null;status('Camera stopped.');}}
+document.getElementById('start').onclick=start;
+document.getElementById('stop').onclick=stop;
+document.getElementById('send').onclick=()=>{sendCode(document.getElementById('manual').value);document.getElementById('manual').value='';};
+</script></body></html>
