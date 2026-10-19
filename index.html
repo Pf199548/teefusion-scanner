@@ -1,10 +1,10 @@
 
 <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>TeeFusion Scanner</title>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-<style>body{margin:0;background:#0c1524;color:#f8fafc;font:16px system-ui,-apple-system,sans-serif}.wrap{max-width:520px;margin:auto;padding:22px}header{display:flex;justify-content:space-between;align-items:center}h1{font-size:25px;margin:0}small{color:#b7c5d7}.pill{padding:7px 11px;background:#334155;border-radius:20px;font-size:12px}.camera{background:#17243a;border:1px solid #334155;border-radius:16px;margin:12px 0;min-height:0;height:170px;overflow:hidden}button{width:100%;padding:16px;border:0;border-radius:12px;background:#f5c432;color:#162033;font-size:17px;font-weight:700;margin:7px 0}button.secondary{background:#334155;color:#fff}input{width:100%;box-sizing:border-box;background:#1d2a40;border:1px solid #64748b;color:white;border-radius:10px;padding:14px;font-size:16px}.status{background:#1b2a40;padding:14px;border-radius:10px;line-height:1.5;word-break:break-word}.error{color:#fecaca}.good{color:#86efac}#reader{height:170px;overflow:hidden}#reader video{width:100%!important;height:170px!important;object-fit:cover!important}#reader__scan_region{min-height:0!important}#reader__dashboard{display:none!important}.result{font-size:clamp(28px,8vw,48px);font-weight:800;text-align:center;letter-spacing:1px;word-break:break-all;padding:16px 8px;background:#182a42;border:1px solid #475569;border-radius:12px;margin:12px 0}.wrap{padding:14px}button{padding:12px}.status{font-size:12px;padding:8px}label{display:block;margin:16px 0 7px}</style></head>
-<body><div class="wrap"><header><div><h1>👕 TeeFusion</h1><small>Wireless Mobile Barcode Scanner</small></div><span class="pill" id="connection">Not paired</span></header>
+<style>body{margin:0;background:#0c1524;color:#f8fafc;font:16px system-ui,-apple-system,sans-serif}.wrap{max-width:520px;margin:auto;padding:22px}header{display:flex;justify-content:space-between;align-items:center}h1{font-size:25px;margin:0}small{color:#b7c5d7}.pill{padding:7px 11px;background:#334155;border-radius:20px;font-size:12px}.camera{background:#17243a;border:1px solid #334155;border-radius:16px;margin:12px 0;min-height:0;height:260px;overflow:hidden}button{width:100%;padding:16px;border:0;border-radius:12px;background:#f5c432;color:#162033;font-size:17px;font-weight:700;margin:7px 0}button.secondary{background:#334155;color:#fff}input{width:100%;box-sizing:border-box;background:#1d2a40;border:1px solid #64748b;color:white;border-radius:10px;padding:14px;font-size:16px}.status{background:#1b2a40;padding:14px;border-radius:10px;line-height:1.5;word-break:break-word}.error{color:#fecaca}.good{color:#86efac}#reader{height:260px;overflow:hidden}#reader video{width:100%!important;height:260px!important;object-fit:contain!important;background:#000}#reader__scan_region{min-height:0!important} #reader__scan_region img{display:none!important}#reader__dashboard{display:none!important}.result{font-size:clamp(28px,8vw,48px);font-weight:800;text-align:center;letter-spacing:1px;word-break:break-all;padding:16px 8px;background:#182a42;border:1px solid #475569;border-radius:12px;margin:12px 0}.wrap{padding:14px}button{padding:12px}.status{font-size:12px;padding:8px}label{display:block;margin:16px 0 7px}</style></head>
+<body><div class="wrap"><header><div><h1>👕 TeeFusion</h1><small>Barcode + QR Wireless Scanner</small></div><span class="pill" id="connection">Not paired</span></header>
 <div class="camera" id="reader"></div><div class="result" id="result" aria-live="polite">READY TO SCAN</div><button id="start">📷 Start Camera</button><button class="secondary" id="stop">Stop Camera</button>
-<label for="manual">Manual barcode (backup)</label><input id="manual" autocomplete="off" placeholder="Enter barcode" inputmode="text"><button class="secondary" id="send">Send Barcode</button>
+<label for="manual">Manual barcode / QR text (backup)</label><input id="manual" autocomplete="off" placeholder="Enter barcode or QR value" inputmode="text"><button class="secondary" id="send">Send Code</button>
 <p class="status" id="status">Open this page using the QR pairing code displayed in TeeFusion on your PC.</p><small>Use Safari or Chrome directly. Pairing expires after 10 minutes. Never share a pairing link.</small></div>
 <script>
 'use strict';
@@ -45,18 +45,19 @@ const paired=validBridge && /^[a-f0-9]{64}$/i.test(pair||'');
 if(paired){connection.textContent='Paired';connection.style.background='#14532d';status('Paired with TeeFusion. Tap Start Camera.','good');history.replaceState({},'',location.pathname);}else{connection.textContent='Camera test mode';status('Not paired yet. You can test the camera and scan barcodes; sending to PC requires GAS pairing.');}
 async function sendCode(raw){
  const code=String(raw||'').trim();
- if(code)resultEl.textContent=code;
+ if(!code)return;
+ resultEl.textContent=code;
  if(!paired){status('Scanned: '+code+' (camera working). Connect GAS and pair with your PC to send this barcode.','good');return;}
- if(!/^[A-Za-z0-9._+\/-]{1,100}$/.test(code)){status('Unsupported barcode characters','error');return;}
- if(busy)return;
+ if(!code || code.length>100){status('Code must contain 1–100 characters for this GAS test backend.','error');return;}
+ if(busy){status('Previous code is still being sent. Please wait.');return;}
  busy=true;
- const eventId=crypto.randomUUID();
+ const eventId=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+'-'+Math.random().toString(16).slice(2));
  const data=new URLSearchParams({action:'scanner_push',pair,barcode:code,eventId});
  try {
   // Apps Script cross-origin POST responses are not reliably readable from a browser.
   // no-cors only means the request was sent; PC confirmation is authoritative.
   await fetch(bridge,{method:'POST',mode:'no-cors',body:data,redirect:'follow',cache:'no-store'});
-  status('Sent: '+code+' — waiting for confirmation on PC.','good');
+  status('Submitted: '+code+' — check PC for receipt (delivery not yet confirmed).','good');
   // Delivery must be confirmed by the PC; feedback already occurred on detection.
  }catch(err){status('Network error. Check internet and scan again.','error');}
  finally{busy=false;}
@@ -66,12 +67,38 @@ async function start(){
  if(scanner)return;
  if(typeof Html5Qrcode==='undefined')return status('Scanner library could not load. Check internet.','error');
  try {
-  scanner=new Html5Qrcode('reader');
-  await scanner.start({facingMode:'environment'},{fps:12,qrbox:{width:220,height:110},aspectRatio:1.9},decoded=>{
+  scanner=new Html5Qrcode('reader', {
+    verbose:false,
+    useBarCodeDetectorIfSupported:true,
+    formatsToSupport:[
+      Html5QrcodeSupportedFormats.QR_CODE,
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.CODE_93,
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A,
+      Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.ITF,
+      Html5QrcodeSupportedFormats.CODABAR,
+      Html5QrcodeSupportedFormats.DATA_MATRIX,
+      Html5QrcodeSupportedFormats.PDF_417
+    ]
+  });
+  await scanner.start({facingMode:'environment'}, {
+    fps:20,
+    qrbox:(viewWidth,viewHeight)=>{
+      // Large centered square allows QR codes and linear barcodes.
+      const size=Math.max(120,Math.floor(Math.min(viewWidth,viewHeight)*0.85));
+      return {width:size,height:size};
+    },
+    disableFlip:true,
+    videoConstraints:{facingMode:'environment',width:{ideal:1280},height:{ideal:720}}
+  },decoded=>{
     const now=Date.now();if(decoded===lastCode && now-lastAt<5000)return;
     lastCode=decoded;lastAt=now;scanFeedback();sendCode(decoded);
   },()=>{});
-  status(paired?'Camera ready. Point at a product barcode.':'Camera ready in test mode. Scan a barcode to verify camera; PC sending is disabled until pairing.','good');
+  status(paired?'Camera ready. Scan a barcode or QR code.':'Camera ready in test mode. Scan a barcode or QR code; PC sending requires pairing.','good');
  }catch(err){scanner=null;status('Camera error: '+(err.message||err)+'. Open in Safari, allow camera, and try again.','error');}
 }
 async function stop(){if(scanner){try{await scanner.stop();await scanner.clear();}catch(e){}scanner=null;status('Camera stopped.');}}
