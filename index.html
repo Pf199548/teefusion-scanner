@@ -27,7 +27,7 @@ button.alt{background:#374d68;color:#fff}button:disabled{opacity:.5}
 <div id="result">READY TO SCAN</div>
 <div class="controls"><button id="start" onclick="startCamera()">Start Camera</button><button class="alt" onclick="stopCamera()">Stop</button></div>
 <div class="options"><label><input type="checkbox" id="beep" checked> Beep</label><label><input type="checkbox" id="vibrate" checked> Vibrate</label></div>
-<div id="status">Scan the pairing QR on your PC to connect.</div>
+<div id="status">Scan the pairing QR on your PC to connect.</div><div id="receipt" style="font-size:13px;margin-top:8px;color:#aabbd0"></div>
 <div class="manual"><input id="manualInput" placeholder="Manual test code" maxlength="500"><button class="alt" onclick="manualTest()">Send manual test</button></div>
 <small>The camera preview is cropped to a square; recognition analyzes the available camera frame. Submitted scans are verified on the PC or in Google Sheets.</small>
 <iframe id="submitFrame" name="tfSubmitFrame" title="Background submit"></iframe>
@@ -46,6 +46,37 @@ $('connection').textContent=paired?'Paired with PC':'TEST MODE — scan PC pairi
 if(paired){$('connection').classList.add('paired');$('submitForm').action=bridge;$('pairField').value=pair;}
 let scanner=null,starting=false,audio=null,lastCode='',lastAt=0;
 const queue=[];let timer=null;
+function checkReceipt(item, attempt=0) {
+  if (!paired) return;
+  if (attempt >= 5) {
+    $('receipt').textContent = 'Not confirmed by GAS. Check deployment/access and generate a fresh PC pairing QR.';
+    return;
+  }
+  const callbackName='tfCallback_'+item.id.replace(/-/g,'_')+'_'+attempt;
+  const script=document.createElement('script');
+  let finished=false;
+  const timeout=setTimeout(()=>finish(null),7000);
+  function finish(data){
+    if(finished)return;finished=true;clearTimeout(timeout);script.remove();delete window[callbackName];
+    if (data && data.state === 'SAVED') {
+      $('receipt').textContent='✓ SAVED to Google Sheet: '+item.value;
+      return;
+    }
+    if (data && ['PAIR_UNKNOWN','PAIR_EXPIRED','BAD_REQUEST'].includes(data.state)) {
+      $('receipt').textContent='Pairing error: '+data.state+'. Generate a new QR on PC.';
+      return;
+    }
+    if (data && data.state === 'SERVER_ERROR') {
+      $('receipt').textContent='GAS receipt check encountered a server error.';
+    }
+    setTimeout(()=>checkReceipt(item,attempt+1),1400);
+  }
+  window[callbackName]=finish;
+  const q=new URLSearchParams({action:'scan_status',pair,eventId:item.id,callback:callbackName,t:String(Date.now())});
+  script.src=bridge+'?'+q.toString();
+  script.onerror=()=>finish(null);
+  document.head.appendChild(script);
+}
 function status(text){$('status').textContent=text;}
 function newId(){
   if(crypto.randomUUID)return crypto.randomUUID();
@@ -71,8 +102,8 @@ function acceptScan(value,kind){
   const now=Date.now();if(value===lastCode && now-lastAt<5000)return;
   if(value.length>500){status('This QR text exceeds the 500 character test limit.');return;}
   lastCode=value;lastAt=now;$('result').textContent=value;feedback();
-  if(!paired){status('Detected in test mode. Open using the QR code generated on your PC.');return;}
-  queue.push({value,kind,id:newId()});status('Scan captured. Sending to GAS…');sendQueued();
+  if(!paired){status('NOT PAIRED — open using a fresh PC QR link. Nothing was sent.');return;}
+  queue.push({value,kind,id:newId()});$('receipt').textContent='Waiting for GAS confirmation…';status('Scan captured. Sending to GAS…');sendQueued();
 }
 function sendQueued(){
   if(timer||!queue.length)return;
@@ -80,7 +111,8 @@ function sendQueued(){
   $('idField').value=item.id;$('codeField').value=item.value;$('kindField').value=item.kind;
   try{
     $('submitForm').submit(); // HTML form POST to hidden iframe: no CORS fetch required.
-    status('Submitted to GAS; confirm arrival on PC / ScannedData tab.');
+    status('Scan posted. Checking Google Sheet receipt…');
+    setTimeout(()=>checkReceipt(item),1800);
   }catch(e){status('Could not submit: '+e.message);}
   timer=setTimeout(()=>{timer=null;sendQueued();},2200);
 }
