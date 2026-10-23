@@ -1,22 +1,104 @@
-<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>TeeFusion Scanner</title>
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="referrer" content="no-referrer"><title>TeeFusion Mobile Scanner</title>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <style>
-*{box-sizing:border-box}body{margin:0;background:#091321;color:white;font-family:system-ui,Arial,sans-serif}.wrap{max-width:470px;margin:auto;padding:18px;text-align:center}h1{color:#f7c537;margin:10px 0 2px}small{color:#a6b6cb}.cam{width:min(88vw,360px);height:min(88vw,360px);margin:16px auto;border:3px solid #f7c537;border-radius:18px;overflow:hidden;background:#000;position:relative}#reader{height:100%;width:100%}#reader video{width:100%!important;height:100%!important;object-fit:cover!important}#reader__dashboard,#reader__scan_region img{display:none!important}.result{font-size:25px;font-weight:700;background:#192a43;border-radius:12px;padding:20px 10px;min-height:90px;overflow-wrap:anywhere}.buttons{display:flex;gap:10px;margin:12px 0}.buttons button{flex:1}button{border:0;border-radius:12px;padding:14px;font-weight:700;font-size:16px;background:#f7c537;color:#0b1423}button.secondary{background:#36465d;color:white}input{width:100%;background:#17273d;color:white;border:1px solid #64748b;padding:13px;border-radius:10px;font-size:16px;margin:7px 0}label{display:block;text-align:left;font-size:13px;color:#cbd5e1;margin-top:9px}.status{background:#17273d;padding:12px;border-radius:12px;margin-top:12px;font-size:14px;overflow-wrap:anywhere}.tip{font-size:12px;color:#9aacc5;margin:12px 0}#settings{margin-top:20px;border-top:1px solid #304258;padding-top:10px;text-align:left}summary{cursor:pointer;color:#f7c537}
-</style></head><body><main class="wrap"><h1>TeeFusion</h1><small>Barcode + QR to Google Sheets</small><div class="cam"><div id="reader"></div></div><div class="result" id="result">READY TO SCAN</div><div class="buttons"><button id="start" onclick="startCamera()">Start Camera</button><button class="secondary" onclick="stopCamera()">Stop</button></div><label style="text-align:center"><input id="beep" type="checkbox" checked style="width:auto"> Beep &nbsp; <input id="vibrate" type="checkbox" checked style="width:auto"> Vibrate (supported devices)</label><div class="status" id="status">Configure GAS connection below, then start scanning.</div><details id="settings"><summary>GAS connection settings</summary><label>GAS Web App /exec URL</label><input id="endpoint" type="url" placeholder="https://script.google.com/macros/s/.../exec"><label>Test key (SCANNER_KEY)</label><input id="key" type="password" placeholder="Paste your SCANNER_KEY"><button onclick="saveSettings()">Save on this device</button><div class="tip">For test use only. Key is stored in this browser. Do not share this URL or key.</div></details><label>Manual test</label><input id="manual" placeholder="Type a test barcode or QR value"><button class="secondary" onclick="manualSend()">Send test code</button><div class="tip">The camera preview is cropped square; scanning analyzes the full video frame. The sheet confirmation checks the event ID after submission.</div></main>
-<script>
-let scanner=null,audio=null,busy=false,last='',lastAt=0;
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:#0b1423;color:#fff;font:15px system-ui,Arial}
+main{max-width:430px;margin:auto;text-align:center;padding:18px 15px 35px}h1{font-size:29px;color:#ffcf40;margin:3px 0}p{margin:8px 0}
+.sub{color:#aabbd0;font-size:13px}.tag{display:inline-block;margin:13px 0;padding:8px 15px;border-radius:30px;background:#344256;font-size:12px}
+.tag.paired{background:#145638}.cam{width:min(86vw,350px);height:min(86vw,350px);margin:10px auto 15px;border:3px solid #ffd447;border-radius:20px;overflow:hidden;background:#000;position:relative}
+#reader{width:100%;height:100%;overflow:hidden;position:relative}
+#reader video{width:100%!important;height:100%!important;object-fit:cover!important;display:block!important}
+#reader__dashboard,#reader__scan_region img{display:none!important}
+.aim{pointer-events:none;position:absolute;inset:22%;border:2px solid rgba(255,210,60,.85);border-radius:14px;z-index:3}
+#result{background:#1a2d45;border-radius:14px;min-height:78px;padding:18px 10px;font-size:25px;font-weight:800;overflow-wrap:anywhere}
+.controls{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
+button{border:0;border-radius:11px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;background:#ffd044;color:#091626}
+button.alt{background:#374d68;color:#fff}button:disabled{opacity:.5}
+.options{padding:6px 0 12px;color:#bfcbda;font-size:13px}.options label{margin:0 8px}
+#status{font-size:13px;background:#16283d;border-radius:10px;padding:13px;min-height:44px;overflow-wrap:anywhere}
+.manual{margin-top:14px}.manual input{width:100%;padding:13px 15px;background:#1c3048;border:1px solid #4c6480;border-radius:10px;color:#fff;font-size:16px}
+.manual button{width:100%;margin-top:9px}small{display:block;color:#9baec6;margin:12px auto;font-size:11px}
+#submitFrame{display:none;width:0;height:0;border:0}
+</style></head><body><main>
+<h1>TeeFusion</h1><p class="sub">Fast Barcode + QR Scanner</p>
+<div class="tag" id="connection">Checking pairing…</div>
+<div class="cam"><div id="reader"></div><div class="aim"></div></div>
+<div id="result">READY TO SCAN</div>
+<div class="controls"><button id="start" onclick="startCamera()">Start Camera</button><button class="alt" onclick="stopCamera()">Stop</button></div>
+<div class="options"><label><input type="checkbox" id="beep" checked> Beep</label><label><input type="checkbox" id="vibrate" checked> Vibrate</label></div>
+<div id="status">Scan the pairing QR on your PC to connect.</div>
+<div class="manual"><input id="manualInput" placeholder="Manual test code" maxlength="500"><button class="alt" onclick="manualTest()">Send manual test</button></div>
+<small>The camera preview is cropped to a square; recognition analyzes the available camera frame. Submitted scans are verified on the PC or in Google Sheets.</small>
+<iframe id="submitFrame" name="tfSubmitFrame" title="Background submit"></iframe>
+<form id="submitForm" method="POST" target="tfSubmitFrame" style="display:none">
+<input name="action" value="scanner_push"><input name="pair" id="pairField"><input name="eventId" id="idField"><input name="barcode" id="codeField"><input name="kind" id="kindField">
+</form>
+</main><script>
+'use strict';
+const args=new URLSearchParams(location.search);
+const bridge=args.get('bridge')||'';
+const pair=args.get('pair')||'';
+const validBridge=/^https:\/\/script\.google\.com\/macros\/s\/[-_\w]+\/exec$/i.test(bridge);
+const paired=validBridge && /^[a-f0-9]{64}$/i.test(pair);
 const $=id=>document.getElementById(id);
-$('endpoint').value=localStorage.getItem('tf_endpoint')||'';
-$('key').value=localStorage.getItem('tf_key')||'';
-function status(s){$('status').textContent=s}
-function saveSettings(){const url=$('endpoint').value.trim();try{const u=new URL(url);if(u.protocol!=='https:'||u.hostname!=='script.google.com'||!/^\/macros\/s\/[^/]+\/exec$/.test(u.pathname))throw Error('Invalid GAS URL');}catch(e){status('Enter the deployed GAS /exec URL');return}if($('key').value.trim().length<24){status('Test key must be at least 24 characters');return}localStorage.setItem('tf_endpoint',url);localStorage.setItem('tf_key',$('key').value.trim());status('Settings saved. Ready to scan.');$('settings').open=false}
-function feedback(){if($('beep').checked){try{const A=window.AudioContext||window.webkitAudioContext;audio=audio||new A();audio.resume();const o=audio.createOscillator(),g=audio.createGain(),t=audio.currentTime;o.frequency.value=950;g.gain.setValueAtTime(.13,t);g.gain.exponentialRampToValueAtTime(.001,t+.13);o.connect(g);g.connect(audio.destination);o.start(t);o.stop(t+.14)}catch(e){}}if($('vibrate').checked&&navigator.vibrate)navigator.vibrate(90)}
-function uuid(){if(crypto.randomUUID)return crypto.randomUUID();const b=new Uint8Array(16);crypto.getRandomValues(b);b[6]=(b[6]&15)|64;b[8]=(b[8]&63)|128;const h=Array.from(b,x=>x.toString(16).padStart(2,'0')).join('');return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`}
-function delay(ms){return new Promise(r=>setTimeout(r,ms))}
-async function submit(value,type){value=String(value||'').trim();if(!value)return;if(busy){status('Please wait for previous scan confirmation');return}const endpoint=localStorage.getItem('tf_endpoint'),key=localStorage.getItem('tf_key');if(!endpoint||!key){status('Open GAS connection settings and save your URL and test key.');$('settings').open=true;return}busy=true;const eventId=uuid();$('result').textContent=value;status('Sending to Google Sheet...');try{const body=new URLSearchParams({action:'save_scan',key,value,type,eventId});await fetch(endpoint,{method:'POST',mode:'no-cors',body,redirect:'follow'});let saved=false;for(let n=0;n<8;n++){await delay(950);try{const u=new URL(endpoint);u.searchParams.set('action','check');u.searchParams.set('key',key);u.searchParams.set('eventId',eventId);const r=await fetch(u.toString(),{redirect:'follow'});const j=await r.json();if(j.ok&&j.saved){saved=true;break}if(j.error){status('GAS error: '+j.error);break}}catch(e){/* GAS CORS can block response; check Sheet directly */}}status(saved?'Saved in Google Sheet ✓':'Not confirmed. Check ScannedData tab and GAS Executions.');}catch(e){status('Submission failed: '+e.message)}finally{busy=false}}
-function detected(text,decoded){const now=Date.now();if(text===last&&now-lastAt<3000)return;last=text;lastAt=now;feedback();submit(text,decoded&&decoded.result&&decoded.result.format&&decoded.result.format.formatName||'AUTO')}
-async function startCamera(){if(scanner)return;if(typeof Html5Qrcode==='undefined'){status('Scanner library failed to load. Check internet.');return}try{const A=window.AudioContext||window.webkitAudioContext;if(A){audio=audio||new A();audio.resume()}}catch(e){}try{scanner=new Html5Qrcode('reader',{formatsToSupport:[Html5QrcodeSupportedFormats.QR_CODE,Html5QrcodeSupportedFormats.EAN_13,Html5QrcodeSupportedFormats.EAN_8,Html5QrcodeSupportedFormats.UPC_A,Html5QrcodeSupportedFormats.UPC_E,Html5QrcodeSupportedFormats.CODE_128,Html5QrcodeSupportedFormats.CODE_39,Html5QrcodeSupportedFormats.CODE_93,Html5QrcodeSupportedFormats.ITF,Html5QrcodeSupportedFormats.CODABAR],useBarCodeDetectorIfSupported:true});await scanner.start({facingMode:'environment'},{fps:12,disableFlip:true},detected,()=>{});status('Camera ready. Point at a barcode or QR code.')}catch(e){status('Camera error: '+e);try{await scanner.clear()}catch(_){}scanner=null}}
-async function stopCamera(){if(!scanner)return;try{await scanner.stop();await scanner.clear();status('Camera stopped')}catch(e){status('Stop error: '+e)}scanner=null}
-function manualSend(){const v=$('manual').value.trim();if(!v)return;feedback();submit(v,'MANUAL');$('manual').value=''}
+$('connection').textContent=paired?'Paired with PC':'TEST MODE — scan PC pairing QR';
+if(paired){$('connection').classList.add('paired');$('submitForm').action=bridge;$('pairField').value=pair;}
+let scanner=null,starting=false,audio=null,lastCode='',lastAt=0;
+const queue=[];let timer=null;
+function status(text){$('status').textContent=text;}
+function newId(){
+  if(crypto.randomUUID)return crypto.randomUUID();
+  const b=new Uint8Array(16);crypto.getRandomValues(b);b[6]=(b[6]&15)|64;b[8]=(b[8]&63)|128;
+  const h=[...b].map(x=>x.toString(16).padStart(2,'0')).join('');
+  return h.slice(0,8)+'-'+h.slice(8,12)+'-'+h.slice(12,16)+'-'+h.slice(16,20)+'-'+h.slice(20);
+}
+function unlockAudio(){
+  try{const A=window.AudioContext||window.webkitAudioContext;if(!A)return;
+    if(!audio)audio=new A();if(audio.state==='suspended')audio.resume().catch(()=>{});
+  }catch(e){}
+}
+function feedback(){
+  if($('beep').checked && audio && audio.state==='running')try{
+    const t=audio.currentTime,o=audio.createOscillator(),g=audio.createGain();
+    o.frequency.value=1050;o.type='sine';g.gain.setValueAtTime(.001,t);g.gain.exponentialRampToValueAtTime(.12,t+.012);g.gain.exponentialRampToValueAtTime(.001,t+.13);
+    o.connect(g);g.connect(audio.destination);o.start(t);o.stop(t+.14);
+  }catch(e){}
+  if($('vibrate').checked && navigator.vibrate)try{navigator.vibrate(100);}catch(e){}
+}
+function acceptScan(value,kind){
+  value=String(value||'').trim();if(!value)return;
+  const now=Date.now();if(value===lastCode && now-lastAt<5000)return;
+  if(value.length>500){status('This QR text exceeds the 500 character test limit.');return;}
+  lastCode=value;lastAt=now;$('result').textContent=value;feedback();
+  if(!paired){status('Detected in test mode. Open using the QR code generated on your PC.');return;}
+  queue.push({value,kind,id:newId()});status('Scan captured. Sending to GAS…');sendQueued();
+}
+function sendQueued(){
+  if(timer||!queue.length)return;
+  const item=queue.shift();
+  $('idField').value=item.id;$('codeField').value=item.value;$('kindField').value=item.kind;
+  try{
+    $('submitForm').submit(); // HTML form POST to hidden iframe: no CORS fetch required.
+    status('Submitted to GAS; confirm arrival on PC / ScannedData tab.');
+  }catch(e){status('Could not submit: '+e.message);}
+  timer=setTimeout(()=>{timer=null;sendQueued();},2200);
+}
+async function startCamera(){
+  if(scanner||starting)return;starting=true;$('start').disabled=true;unlockAudio();
+  if(typeof Html5Qrcode==='undefined'){status('Scanner library did not load. Check internet.');starting=false;$('start').disabled=false;return;}
+  try{
+    const f=Html5QrcodeSupportedFormats;
+    scanner=new Html5Qrcode('reader',{formatsToSupport:[f.QR_CODE,f.EAN_13,f.EAN_8,f.UPC_A,f.UPC_E,f.CODE_128,f.CODE_39,f.CODE_93,f.ITF,f.CODABAR,f.DATA_MATRIX,f.PDF_417],verbose:false,useBarCodeDetectorIfSupported:true});
+    await scanner.start({facingMode:'environment'},{fps:12,disableFlip:true},(value,decode)=>{
+      let kind='BARCODE';try{const fmt=String(decode.result.format.formatName||'');if(fmt==='QR_CODE')kind='QR';}catch(e){}
+      acceptScan(value,kind);
+    },()=>{});
+    status(paired?'Scanning. Aim at a code; scans are sent to GAS.':'Scanning in TEST MODE. Scan PC pairing QR to connect.');
+  }catch(e){status('Camera start failed: '+(e.message||e));try{if(scanner)await scanner.clear();}catch(_){}scanner=null;}
+  finally{starting=false;$('start').disabled=false;}
+}
+async function stopCamera(){if(!scanner)return;try{await scanner.stop();await scanner.clear();status('Camera stopped.');}catch(e){status('Stop error: '+e.message);}finally{scanner=null;}}
+function manualTest(){unlockAudio();const x=$('manualInput').value.trim();if(x){acceptScan(x,'MANUAL');$('manualInput').value='';}}
+status(paired?'Paired. Start camera or send a manual test.':'Open this page via the pairing QR generated on your PC.');
 </script></body></html>
