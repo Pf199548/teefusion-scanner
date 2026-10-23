@@ -29,11 +29,8 @@ button.alt{background:#374d68;color:#fff}button:disabled{opacity:.5}
 <div class="options"><label><input type="checkbox" id="beep" checked> Beep</label><label><input type="checkbox" id="vibrate" checked> Vibrate</label></div>
 <div id="status">Scan the pairing QR on your PC to connect.</div><div id="receipt" style="font-size:13px;margin-top:8px;color:#aabbd0"></div>
 <div class="manual"><input id="manualInput" placeholder="Manual test code" maxlength="500"><button class="alt" onclick="manualTest()">Send manual test</button></div>
-<small>The camera preview is cropped to a square; recognition analyzes the available camera frame. Submitted scans are verified on the PC or in Google Sheets.</small>
-<iframe id="submitFrame" name="tfSubmitFrame" title="Background submit"></iframe>
-<form id="submitForm" method="POST" target="tfSubmitFrame" style="display:none">
-<input name="action" value="scanner_push"><input name="pair" id="pairField"><input name="eventId" id="idField"><input name="barcode" id="codeField"><input name="kind" id="kindField">
-</form>
+<small>The camera preview is cropped to a square; recognition analyzes the available camera frame. The GAS receiver confirms each saved scan.</small>
+
 </main><script>
 'use strict';
 const args=new URLSearchParams(location.search);
@@ -45,37 +42,33 @@ const $=id=>document.getElementById(id);
 $('connection').textContent=paired?'Paired with PC':'TEST MODE — scan PC pairing QR';
 if(paired){$('connection').classList.add('paired');$('submitForm').action=bridge;$('pairField').value=pair;}
 let scanner=null,starting=false,audio=null,lastCode='',lastAt=0;
-const queue=[];let timer=null;
-function checkReceipt(item, attempt=0) {
-  if (!paired) return;
-  if (attempt >= 5) {
-    $('receipt').textContent = 'Not confirmed by GAS. Check deployment/access and generate a fresh PC pairing QR.';
-    return;
-  }
-  const callbackName='tfCallback_'+item.id.replace(/-/g,'_')+'_'+attempt;
-  const script=document.createElement('script');
-  let finished=false;
-  const timeout=setTimeout(()=>finish(null),7000);
-  function finish(data){
-    if(finished)return;finished=true;clearTimeout(timeout);script.remove();delete window[callbackName];
-    if (data && data.state === 'SAVED') {
-      $('receipt').textContent='✓ SAVED to Google Sheet: '+item.value;
-      return;
+const queue=[]; let sending=false;
+// JSONP runs a script returned by GAS. Unlike no-cors fetch and iframe POST,
+// the callback gives a readable SAVED / PAIR_EXPIRED / SERVER_ERROR result.
+function gasCall(action, fields, timeoutMs=16000) {
+  return new Promise(resolve => {
+    const callbackName='tfCallback_'+newId().replace(/-/g,'_');
+    const script=document.createElement('script');
+    let done=false;
+    const timeout=setTimeout(()=>finish({state:'NO_RESPONSE'}),timeoutMs);
+    function finish(response){
+      if(done)return;
+      done=true;clearTimeout(timeout);script.remove();
+      delete window[callbackName];resolve(response);
     }
-    if (data && ['PAIR_UNKNOWN','PAIR_EXPIRED','BAD_REQUEST'].includes(data.state)) {
-      $('receipt').textContent='Pairing error: '+data.state+'. Generate a new QR on PC.';
-      return;
-    }
-    if (data && data.state === 'SERVER_ERROR') {
-      $('receipt').textContent='GAS receipt check encountered a server error.';
-    }
-    setTimeout(()=>checkReceipt(item,attempt+1),1400);
-  }
-  window[callbackName]=finish;
-  const q=new URLSearchParams({action:'scan_status',pair,eventId:item.id,callback:callbackName,t:String(Date.now())});
-  script.src=bridge+'?'+q.toString();
-  script.onerror=()=>finish(null);
-  document.head.appendChild(script);
+    window[callbackName]=finish;
+    const p=new URLSearchParams({...fields,action,callback:callbackName,nonce:String(Date.now())});
+    script.src=bridge+'?'+p.toString();
+    script.onerror=()=>finish({state:'NETWORK_ERROR'});
+    document.head.appendChild(script);
+  });
+}
+async function checkConnection(){
+  if(!paired){status('Not paired. Scan a fresh QR from the PC dashboard.');return;}
+  status('Checking connection to GAS…');
+  const response=await gasCall('scanner_ping',{});
+  status(response.state==='RECEIVER_OK'?'✓ GAS receiver reachable. Ready to scan.':
+    'GAS connection failed: '+response.state+'. Check deployment and /exec URL.');
 }
 function status(text){$('status').textContent=text;}
 function newId(){
@@ -105,16 +98,29 @@ function acceptScan(value,kind){
   if(!paired){status('NOT PAIRED — open using a fresh PC QR link. Nothing was sent.');return;}
   queue.push({value,kind,id:newId()});$('receipt').textContent='Waiting for GAS confirmation…';status('Scan captured. Sending to GAS…');sendQueued();
 }
-function sendQueued(){
-  if(timer||!queue.length)return;
-  const item=queue.shift();
-  $('idField').value=item.id;$('codeField').value=item.value;$('kindField').value=item.kind;
-  try{
-    $('submitForm').submit(); // HTML form POST to hidden iframe: no CORS fetch required.
-    status('Scan posted. Checking Google Sheet receipt…');
-    setTimeout(()=>checkReceipt(item),1800);
-  }catch(e){status('Could not submit: '+e.message);}
-  timer=setTimeout(()=>{timer=null;sendQueued();},2200);
+async function sendQueued(){
+  if(sending || !queue.length)return;
+  sending=true;
+  try {
+    while(queue.length){
+      const item=queue.shift();
+      status('Sending '+item.value+' to GAS…');
+      const response=await gasCall('scan_submit',{
+        pair, eventId:item.id, barcode:item.value,kind:item.kind
+      });
+      const state=response.state||'UNKNOWN';
+      if(state==='SAVED') {
+        $('receipt').textContent='✓ SAVED to Google Sheet: '+item.value;
+        status('GAS confirmed row '+(response.row||'(existing event)')+'.');
+      } else if(state==='PAIR_UNKNOWN'||state==='PAIR_EXPIRED') {
+        $('receipt').textContent='Pairing invalid or expired. Generate a fresh PC QR.';
+        status(state);queue.length=0;break;
+      } else {
+        $('receipt').textContent='NOT SAVED: '+state;
+        status(response.detail||'Check GAS executions and deployment.');
+      }
+    }
+  } finally {sending=false;}
 }
 async function startCamera(){
   if(scanner||starting)return;starting=true;$('start').disabled=true;unlockAudio();
@@ -132,5 +138,6 @@ async function startCamera(){
 }
 async function stopCamera(){if(!scanner)return;try{await scanner.stop();await scanner.clear();status('Camera stopped.');}catch(e){status('Stop error: '+e.message);}finally{scanner=null;}}
 function manualTest(){unlockAudio();const x=$('manualInput').value.trim();if(x){acceptScan(x,'MANUAL');$('manualInput').value='';}}
-status(paired?'Paired. Start camera or send a manual test.':'Open this page via the pairing QR generated on your PC.');
+status(paired?'Paired. Run a manual test or start camera.':'Open this page via the pairing QR generated on your PC.');
+if(paired)checkConnection();
 </script></body></html>
